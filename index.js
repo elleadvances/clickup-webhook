@@ -152,4 +152,14 @@ app.post("/clickup-webhook", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+
+  // TEMPORARY DIAGNOSTIC — checks the refresh token for hidden characters
+  // (quotes, spaces, line breaks) without printing the whole secret.
+  if (REFRESH_TOKEN) {
+    console.log("REFRESH_TOKEN length:", REFRESH_TOKEN.length);
+    console.log("REFRESH_TOKEN first 6 chars:", JSON.stringify(REFRESH_TOKEN.slice(0, 6)));
+    console.log("REFRESH_TOKEN last 6 chars:", JSON.stringify(REFRESH_TOKEN.slice(-6)));
+  } else {
+    console.log("REFRESH_TOKEN is missing entirely!");
+  }
 });
