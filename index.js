@@ -83,6 +83,10 @@ function getCustomFieldValue(task, fieldName) {
 // Main webhook endpoint — ClickUp will POST here when a task is created/updated
 app.post("/clickup-webhook", async (req, res) => {
   try {
+    // TEMPORARY DEBUG LINE — logs the full incoming payload so we can see its real shape.
+    // Remove this once things are working, since it'll clutter the logs.
+    console.log("Incoming payload:", JSON.stringify(req.body, null, 2));
+
     // Pulls the client name from the "Company Name" custom field on the task.
     const task = req.body?.task;
     const clientName = getCustomFieldValue(task, "Company Name");
@@ -96,17 +100,25 @@ app.post("/clickup-webhook", async (req, res) => {
     const folderName = sanitizeFolderName(clientName);
     const accessToken = await getAccessToken();
 
-    // Creates the main client folder plus standard subfolders.
-    // Edit this list to match whatever folder structure AdVance actually uses.
-    const basePath = `/Clients/${folderName}`;
-    const subfolders = ["Scripts", "Raw Footage", "Final Cuts"];
+    // Base path lives inside the shared "AdVance Creative Team Folder" > "Video Ads"
+    const videoAdsPath = "/AdVance Creative Team Folder/Video Ads";
 
-    await createDropboxFolder(accessToken, basePath);
-    for (const sub of subfolders) {
-      await createDropboxFolder(accessToken, `${basePath}/${sub}`);
+    // Per-client folder, named "[Company Name] Winners"
+    const clientFolderPath = `${videoAdsPath}/${folderName} Winners`;
+
+    // Shared folders that live directly under Video Ads (not per-client)
+    const sharedFolders = ["For Review", "Approved"];
+
+    await createDropboxFolder(accessToken, clientFolderPath);
+    for (const shared of sharedFolders) {
+      await createDropboxFolder(accessToken, `${videoAdsPath}/${shared}`);
     }
 
-    res.json({ success: true, folder: basePath, subfolders });
+    res.json({
+      success: true,
+      clientFolder: clientFolderPath,
+      sharedFolders: sharedFolders.map((s) => `${videoAdsPath}/${s}`),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
