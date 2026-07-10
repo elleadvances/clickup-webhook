@@ -45,21 +45,10 @@ app.post("/ghl-recap-call", async (req, res) => {
     // TEMPORARY DEBUG LINE — logs exactly what GHL sends, so we can see its real shape.
     console.log("Incoming GHL payload:", JSON.stringify(req.body, null, 2));
 
-    // Pull the contact name and appointment time from whatever GHL actually sent.
-    // GHL's field names can vary, so we check a few likely spots.
-    const contactName =
-      req.body?.contact?.name ||
-      req.body?.full_name ||
-      req.body?.first_name ||
-      "A contact";
-
-    const appointmentTime =
-      req.body?.appointment?.start_time ||
-      req.body?.calendar?.startTime ||
-      req.body?.start_time ||
-      "an upcoming time";
-
-    const message = `Hi team! New recap call booked with ${contactName} — ${appointmentTime}`;
+    // Uses the "text" value GHL sends (built with its own merge tags),
+    // so the wording can be edited directly in GHL without touching this code.
+    const ghlMessage = req.body?.text || "New recap call booked (details unavailable)";
+    const message = `<!channel> ${ghlMessage}`;
 
     const slackResponse = await fetch(SLACK_WEBHOOK_URL, {
       method: "POST",
