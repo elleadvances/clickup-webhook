@@ -134,23 +134,28 @@ app.post("/clickup-webhook", async (req, res) => {
     const folderName = sanitizeFolderName(clientName);
     const accessToken = await getAccessToken();
 
-    // Base path lives inside the shared "AdVance Creative Team Folder" > "Video Ads"
-    const videoAdsPath = "/AdVance Creative Team Folder/Video Ads";
+    // Structure:
+    // /AdVance Creative Team Folder/{Company Name}/
+    //   Video Ads/
+    //     {Company Name} Winners/
+    //     Approved/
+    //     For Review/
+    const clientBasePath = `/AdVance Creative Team Folder/${folderName}`;
+    const videoAdsPath = `${clientBasePath}/Video Ads`;
+    const winnersPath = `${videoAdsPath}/${folderName} Winners`;
+    const sharedFolders = ["Approved", "For Review"];
 
-    // Per-client folder, named "[Company Name] Winners"
-    const clientFolderPath = `${videoAdsPath}/${folderName} Winners`;
-
-    // Shared folders that live directly under Video Ads (not per-client)
-    const sharedFolders = ["For Review", "Approved"];
-
-    await createDropboxFolder(accessToken, clientFolderPath);
+    await createDropboxFolder(accessToken, clientBasePath);
+    await createDropboxFolder(accessToken, videoAdsPath);
+    await createDropboxFolder(accessToken, winnersPath);
     for (const shared of sharedFolders) {
       await createDropboxFolder(accessToken, `${videoAdsPath}/${shared}`);
     }
 
     res.json({
       success: true,
-      clientFolder: clientFolderPath,
+      clientFolder: clientBasePath,
+      winnersFolder: winnersPath,
       sharedFolders: sharedFolders.map((s) => `${videoAdsPath}/${s}`),
     });
   } catch (err) {
