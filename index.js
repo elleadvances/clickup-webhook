@@ -1,0 +1,108 @@
+// AdVance ClickUp → Dropbox Folder Automation
+// Listens for a ClickUp webhook and creates a client folder in Dropbox
+
+const express = require("express");
+const app = express();
+app.use(express.json());
+
+const PORT = process.env.PORT || 3000;
+
+// These come from Railway's environment variables — never hardcode them here
+const APP_KEY = process.env.DROPBOX_APP_KEY;
+const APP_SECRET = process.env.DROPBOX_APP_SECRET;
+const REFRESH_TOKEN = process.env.DROPBOX_REFRESH_TOKEN;
+
+// Root path — lets you confirm the app is alive by visiting the Railway URL in a browser
+app.get("/", (req, res) => {
+  res.send("AdVance Dropbox folder automation is running.");
+});
+
+// Uses the refresh token to get a fresh short-lived access token from Dropbox.
+// This runs automatically every time a folder needs to be created — no manual steps.
+async function getAccessToken() {
+  const response = await fetch("https://api.dropboxapi.com/oauth2/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: REFRESH_TOKEN,
+      client_id: APP_KEY,
+      client_secret: APP_SECRET,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(`Dropbox token refresh failed: ${JSON.stringify(data)}`);
+  }
+
+  return data.access_token;
+}
+
+// Creates a folder in Dropbox at the given path
+async function createDropboxFolder(accessToken, path) {
+  const response = await fetch("https://api.dropboxapi.com/2/files/create_folder_v2", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path, autorename: false }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    // If the folder already exists, Dropbox returns a specific error — treat that as OK, not a failure
+    if (data.error_summary && data.error_summary.includes("path/conflict")) {
+      console.log(`Folder already exists, skipping: ${path}`);
+      return { alreadyExists: true, path };
+    }
+    throw new Error(`Dropbox folder creation failed: ${JSON.stringify(data)}`);
+  }
+
+  console.log(`Folder created: ${path}`);
+  return data;
+}
+
+// Sanitizes a client/project name so it's safe to use as a folder name
+function sanitizeFolderName(name) {
+  return name.replace(/[\\/:*?"<>|]/g, "").trim();
+}
+
+// Main webhook endpoint — ClickUp will POST here when a task is created/updated
+app.post("/clickup-webhook", async (req, res) => {
+  try {
+    // Adjust this to match how ClickUp sends the client/project name in the payload.
+    // For a custom field, ClickUp typically sends it under task.custom_fields.
+    // For now, this assumes the task name IS the client/project name — update as needed.
+    const clientName = req.body?.task?.name || req.body?.name;
+
+    if (!clientName) {
+      return res.status(400).json({ error: "No client/project name found in payload" });
+    }
+
+    const folderName = sanitizeFolderName(clientName);
+    const accessToken = await getAccessToken();
+
+    // Creates the main client folder plus standard subfolders.
+    // Edit this list to match whatever folder structure AdVance actually uses.
+    const basePath = `/Clients/${folderName}`;
+    const subfolders = ["Scripts", "Raw Footage", "Final Cuts"];
+
+    await createDropboxFolder(accessToken, basePath);
+    for (const sub of subfolders) {
+      await createDropboxFolder(accessToken, `${basePath}/${sub}`);
+    }
+
+    res.json({ success: true, folder: basePath, subfolders });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
