@@ -47,7 +47,8 @@ app.post("/ghl-recap-call", async (req, res) => {
 
     // Uses the "text" value GHL sends (built with its own merge tags),
     // so the wording can be edited directly in GHL without touching this code.
-    const ghlMessage = req.body?.text || "New recap call booked (details unavailable)";
+    // GHL nests custom data under "customData", not at the top level.
+    const ghlMessage = req.body?.customData?.text || req.body?.text || "New recap call booked (details unavailable)";
     const message = `<!channel> ${ghlMessage}`;
 
     const slackResponse = await fetch(SLACK_WEBHOOK_URL, {
