@@ -71,16 +71,26 @@ function sanitizeFolderName(name) {
   return name.replace(/[\\/:*?"<>|]/g, "").trim();
 }
 
+// Pulls a named custom field's value off a ClickUp task object.
+// ClickUp sends custom_fields as an array of { name, value, ... } objects.
+function getCustomFieldValue(task, fieldName) {
+  const field = task?.custom_fields?.find(
+    (f) => f.name?.toLowerCase() === fieldName.toLowerCase()
+  );
+  return field?.value ?? null;
+}
+
 // Main webhook endpoint — ClickUp will POST here when a task is created/updated
 app.post("/clickup-webhook", async (req, res) => {
   try {
-    // Adjust this to match how ClickUp sends the client/project name in the payload.
-    // For a custom field, ClickUp typically sends it under task.custom_fields.
-    // For now, this assumes the task name IS the client/project name — update as needed.
-    const clientName = req.body?.task?.name || req.body?.name;
+    // Pulls the client name from the "Company Name" custom field on the task.
+    const task = req.body?.task;
+    const clientName = getCustomFieldValue(task, "Company Name");
 
     if (!clientName) {
-      return res.status(400).json({ error: "No client/project name found in payload" });
+      return res.status(400).json({
+        error: "No 'Company Name' custom field value found on this task",
+      });
     }
 
     const folderName = sanitizeFolderName(clientName);
