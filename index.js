@@ -4,6 +4,7 @@
 const express = require("express");
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Handles form-encoded bodies too, in case GHL sends that instead of JSON
 
 const PORT = process.env.PORT || 3000;
 
@@ -33,6 +34,51 @@ async function getClickUpTask(taskId) {
 // Root path — lets you confirm the app is alive by visiting the Railway URL in a browser
 app.get("/", (req, res) => {
   res.send("AdVance Dropbox folder automation is running.");
+});
+
+// New route: receives the GHL "Recap Call Booked" webhook and forwards a clean message to Slack.
+// This exists because GHL's built-in webhook action doesn't reliably send Slack the format it expects.
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
+
+app.post("/ghl-recap-call", async (req, res) => {
+  try {
+    // TEMPORARY DEBUG LINE — logs exactly what GHL sends, so we can see its real shape.
+    console.log("Incoming GHL payload:", JSON.stringify(req.body, null, 2));
+
+    // Pull the contact name and appointment time from whatever GHL actually sent.
+    // GHL's field names can vary, so we check a few likely spots.
+    const contactName =
+      req.body?.contact?.name ||
+      req.body?.full_name ||
+      req.body?.first_name ||
+      "A contact";
+
+    const appointmentTime =
+      req.body?.appointment?.start_time ||
+      req.body?.calendar?.startTime ||
+      req.body?.start_time ||
+      "an upcoming time";
+
+    const message = `Hi team! New recap call booked with ${contactName} — ${appointmentTime}`;
+
+    const slackResponse = await fetch(SLACK_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: message }),
+    });
+
+    const slackText = await slackResponse.text();
+
+    if (!slackResponse.ok) {
+      throw new Error(`Slack post failed (status ${slackResponse.status}): ${slackText}`);
+    }
+
+    console.log("Posted to Slack successfully:", message);
+    res.json({ success: true, message });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Uses the refresh token to get a fresh short-lived access token from Dropbox.
