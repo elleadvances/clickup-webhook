@@ -88,7 +88,8 @@ app.post("/clickup-webhook", async (req, res) => {
     console.log("Incoming payload:", JSON.stringify(req.body, null, 2));
 
     // Pulls the client name from the "Company Name" custom field on the task.
-    const task = req.body?.task;
+    // ClickUp's automation webhook nests the task data under "payload", not "task".
+    const task = req.body?.payload;
     const clientName = getCustomFieldValue(task, "Company Name");
 
     if (!clientName) {
