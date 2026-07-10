@@ -58,13 +58,46 @@ async function getAccessToken() {
   return data.access_token;
 }
 
+// Fetches the root namespace ID for the team space, so folder operations
+// target the shared team space instead of the personal namespace by default.
+async function getTeamRootNamespaceId(accessToken) {
+  const response = await fetch("https://api.dropboxapi.com/2/users/get_current_account", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const rawText = await response.text();
+  let data;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    throw new Error(`Dropbox get_current_account returned non-JSON (status ${response.status}): ${rawText}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Dropbox get_current_account failed: ${JSON.stringify(data)}`);
+  }
+
+  const rootNamespaceId = data?.root_info?.root_namespace_id;
+  if (!rootNamespaceId) {
+    throw new Error(`No root_namespace_id found in account info: ${JSON.stringify(data)}`);
+  }
+
+  return rootNamespaceId;
+}
+
 // Creates a folder in Dropbox at the given path
-async function createDropboxFolder(accessToken, path) {
+async function createDropboxFolder(accessToken, path, rootNamespaceId) {
   const response = await fetch("https://api.dropboxapi.com/2/files/create_folder_v2", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
+      // This header tells Dropbox to resolve the path against the team space root
+      // instead of the calling user's personal namespace.
+      "Dropbox-API-Path-Root": JSON.stringify({ ".tag": "root", root: rootNamespaceId }),
     },
     body: JSON.stringify({ path, autorename: false }),
   });
@@ -133,6 +166,7 @@ app.post("/clickup-webhook", async (req, res) => {
 
     const folderName = sanitizeFolderName(clientName);
     const accessToken = await getAccessToken();
+    const rootNamespaceId = await getTeamRootNamespaceId(accessToken);
 
     // Structure:
     // /AdVance Creative Team Folder/{Company Name}/
@@ -145,11 +179,11 @@ app.post("/clickup-webhook", async (req, res) => {
     const winnersPath = `${videoAdsPath}/${folderName} Winners`;
     const sharedFolders = ["Approved", "For Review"];
 
-    await createDropboxFolder(accessToken, clientBasePath);
-    await createDropboxFolder(accessToken, videoAdsPath);
-    await createDropboxFolder(accessToken, winnersPath);
+    await createDropboxFolder(accessToken, clientBasePath, rootNamespaceId);
+    await createDropboxFolder(accessToken, videoAdsPath, rootNamespaceId);
+    await createDropboxFolder(accessToken, winnersPath, rootNamespaceId);
     for (const shared of sharedFolders) {
-      await createDropboxFolder(accessToken, `${videoAdsPath}/${shared}`);
+      await createDropboxFolder(accessToken, `${videoAdsPath}/${shared}`, rootNamespaceId);
     }
 
     res.json({
