@@ -11,6 +11,24 @@ const PORT = process.env.PORT || 3000;
 const APP_KEY = process.env.DROPBOX_APP_KEY;
 const APP_SECRET = process.env.DROPBOX_APP_SECRET;
 const REFRESH_TOKEN = process.env.DROPBOX_REFRESH_TOKEN;
+const CLICKUP_API_TOKEN = process.env.CLICKUP_API_TOKEN;
+
+// Fetches the full task record from ClickUp's API, including custom fields.
+// ClickUp's automation webhook only sends basic task info, not custom field values,
+// so we need this extra call to get "Company Name".
+async function getClickUpTask(taskId) {
+  const response = await fetch(`https://api.clickup.com/api/v2/task/${taskId}`, {
+    headers: { Authorization: CLICKUP_API_TOKEN },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(`ClickUp task fetch failed: ${JSON.stringify(data)}`);
+  }
+
+  return data;
+}
 
 // Root path — lets you confirm the app is alive by visiting the Railway URL in a browser
 app.get("/", (req, res) => {
@@ -87,9 +105,15 @@ app.post("/clickup-webhook", async (req, res) => {
     // Remove this once things are working, since it'll clutter the logs.
     console.log("Incoming payload:", JSON.stringify(req.body, null, 2));
 
-    // Pulls the client name from the "Company Name" custom field on the task.
-    // ClickUp's automation webhook nests the task data under "payload", not "task".
-    const task = req.body?.payload;
+    // The webhook payload only gives us basic info, including the task ID.
+    // We use that ID to fetch the FULL task (with custom fields) from ClickUp's API.
+    const taskId = req.body?.payload?.id;
+
+    if (!taskId) {
+      return res.status(400).json({ error: "No task ID found in webhook payload" });
+    }
+
+    const task = await getClickUpTask(taskId);
     const clientName = getCustomFieldValue(task, "Company Name");
 
     if (!clientName) {
