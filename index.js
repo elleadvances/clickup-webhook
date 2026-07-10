@@ -69,7 +69,16 @@ async function createDropboxFolder(accessToken, path) {
     body: JSON.stringify({ path, autorename: false }),
   });
 
-  const data = await response.json();
+  // Read the raw text first — Dropbox sometimes returns plain-text errors
+  // (not JSON) for malformed requests, and trying to JSON.parse those crashes.
+  const rawText = await response.text();
+  let data;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    // Not JSON — surface the raw text directly so we can see what Dropbox actually said
+    throw new Error(`Dropbox returned a non-JSON response (status ${response.status}): ${rawText}`);
+  }
 
   if (!response.ok) {
     // If the folder already exists, Dropbox returns a specific error — treat that as OK, not a failure
