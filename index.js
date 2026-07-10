@@ -174,13 +174,16 @@ app.post("/clickup-webhook", async (req, res) => {
     //     {Company Name} Winners/
     //     Approved/
     //     For Review/
+    //   Assets/
     const clientBasePath = `/AdVance Creative Team Folder/${folderName}`;
     const videoAdsPath = `${clientBasePath}/Video Ads`;
+    const assetsPath = `${clientBasePath}/Assets`;
     const winnersPath = `${videoAdsPath}/${folderName} Winners`;
     const sharedFolders = ["Approved", "For Review"];
 
     await createDropboxFolder(accessToken, clientBasePath, rootNamespaceId);
     await createDropboxFolder(accessToken, videoAdsPath, rootNamespaceId);
+    await createDropboxFolder(accessToken, assetsPath, rootNamespaceId);
     await createDropboxFolder(accessToken, winnersPath, rootNamespaceId);
     for (const shared of sharedFolders) {
       await createDropboxFolder(accessToken, `${videoAdsPath}/${shared}`, rootNamespaceId);
@@ -189,6 +192,8 @@ app.post("/clickup-webhook", async (req, res) => {
     res.json({
       success: true,
       clientFolder: clientBasePath,
+      videoAdsFolder: videoAdsPath,
+      assetsFolder: assetsPath,
       winnersFolder: winnersPath,
       sharedFolders: sharedFolders.map((s) => `${videoAdsPath}/${s}`),
     });
