@@ -40,16 +40,47 @@ app.get("/", (req, res) => {
 // This exists because GHL's built-in webhook action doesn't reliably send Slack the format it expects.
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 
+// Converts a naive Eastern-time string (e.g. "2026-07-24T15:00:00") to Pacific time.
+// GHL's account is set to Eastern, but the team operates in Pacific — ET is always
+// 3 hours ahead of PT (both follow the same US DST schedule), so a flat offset works.
+function convertEasternToPacific(easternTimeStr) {
+  const [datePart, timePart] = easternTimeStr.split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hour, minute, second] = timePart.split(":").map(Number);
+
+  const asUTC = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  asUTC.setUTCHours(asUTC.getUTCHours() - 3);
+
+  return asUTC;
+}
+
 app.post("/ghl-recap-call", async (req, res) => {
   try {
     // TEMPORARY DEBUG LINE — logs exactly what GHL sends, so we can see its real shape.
     console.log("Incoming GHL payload:", JSON.stringify(req.body, null, 2));
 
-    // Uses the "text" value GHL sends (built with its own merge tags),
-    // so the wording can be edited directly in GHL without touching this code.
-    // GHL nests custom data under "customData", not at the top level.
-    const ghlMessage = req.body?.customData?.text || req.body?.text || "New recap call booked (details unavailable)";
-    const message = `<!channel> ${ghlMessage}`;
+    const contactName = req.body?.contact?.full_name || "Someone";
+    const rawStartTime = req.body?.calendar?.startTime; // e.g. "2026-07-24T15:00:00" (Eastern, naive)
+
+    let message;
+    if (rawStartTime) {
+      const pacificDate = convertEasternToPacific(rawStartTime);
+      const formattedTime = pacificDate.toLocaleString("en-US", {
+        timeZone: "UTC", // prevents double-shifting — we already converted manually
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      message = `<!channel> Hi team! New recap call booked with ${contactName} at ${formattedTime} PT`;
+    } else {
+      // Fallback in case the calendar object isn't present for some reason
+      const ghlMessage = req.body?.customData?.text || req.body?.text || "New recap call booked (details unavailable)";
+      message = `<!channel> ${ghlMessage}`;
+    }
 
     const slackResponse = await fetch(SLACK_WEBHOOK_URL, {
       method: "POST",
