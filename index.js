@@ -59,7 +59,7 @@ app.post("/ghl-recap-call", async (req, res) => {
     // TEMPORARY DEBUG LINE — logs exactly what GHL sends, so we can see its real shape.
     console.log("Incoming GHL payload:", JSON.stringify(req.body, null, 2));
 
-    const contactName = req.body?.contact?.full_name || "Someone";
+    const contactName = req.body?.full_name || req.body?.first_name || "Someone";
     const rawStartTime = req.body?.calendar?.startTime; // e.g. "2026-07-24T15:00:00" (Eastern, naive)
 
     let message;
